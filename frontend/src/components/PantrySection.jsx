@@ -1,8 +1,12 @@
 import { useState } from 'react';
 
 const CATEGORIES = ['pantry', 'spice', 'oil', 'sauce', 'vinegar', 'other'];
+const STORAGE_KEY = 'dinnerhelper-pantry-expanded';
 
 export default function PantrySection({ items, onAdd, onRemove }) {
+  const [expanded, setExpanded] = useState(() => {
+    return localStorage.getItem(STORAGE_KEY) === 'true';
+  });
   const [showForm, setShowForm] = useState(false);
   const [newCategory, setNewCategory] = useState('pantry');
   const [newName, setNewName] = useState('');
@@ -13,6 +17,13 @@ export default function PantrySection({ items, onAdd, onRemove }) {
   for (const item of items) {
     if (!grouped[item.category]) grouped[item.category] = [];
     grouped[item.category].push(item);
+  }
+
+  function toggleExpanded() {
+    const next = !expanded;
+    setExpanded(next);
+    localStorage.setItem(STORAGE_KEY, String(next));
+    if (!next) setShowForm(false);
   }
 
   async function handleAdd(e) {
@@ -31,93 +42,111 @@ export default function PantrySection({ items, onAdd, onRemove }) {
         <div className="pantry-title">
           <span className="pantry-icon">🍳</span>
           <span>Our Kitchen Staples</span>
+          {items.length > 0 && (
+            <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 400 }}>
+              ({items.length})
+            </span>
+          )}
         </div>
         <div className="pantry-actions">
+          {expanded && (
+            <button
+              className="add-staple-btn"
+              onClick={() => setShowForm(s => !s)}
+            >
+              + Add Staple
+            </button>
+          )}
           <button
-            className="add-staple-btn"
-            onClick={() => setShowForm(s => !s)}
+            className="pantry-toggle-btn"
+            onClick={toggleExpanded}
+            aria-label={expanded ? 'Collapse pantry' : 'Expand pantry'}
           >
-            + Add Staple
+            {expanded ? '▾' : '▸'}
           </button>
         </div>
       </div>
 
-      {showForm && (
-        <form className="pantry-add-form" onSubmit={handleAdd}>
-          <select
-            value={newCategory}
-            onChange={e => setNewCategory(e.target.value)}
-          >
-            {CATEGORIES.map(c => (
-              <option key={c} value={c}>
-                {c.charAt(0).toUpperCase() + c.slice(1)}
-              </option>
-            ))}
-          </select>
-          <input
-            type="text"
-            placeholder="Item name"
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
-            autoFocus
-          />
-          <button type="submit" disabled={!newName.trim() || adding}>
-            {adding ? '…' : 'Add'}
-          </button>
-          <button type="button" onClick={() => setShowForm(false)}>
-            Cancel
-          </button>
-        </form>
-      )}
+      {expanded && (
+        <div className="pantry-body">
+          {showForm && (
+            <form className="pantry-add-form" onSubmit={handleAdd}>
+              <select
+                value={newCategory}
+                onChange={e => setNewCategory(e.target.value)}
+              >
+                {CATEGORIES.map(c => (
+                  <option key={c} value={c}>
+                    {c.charAt(0).toUpperCase() + c.slice(1)}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                placeholder="Item name"
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                autoFocus
+              />
+              <button type="submit" disabled={!newName.trim() || adding}>
+                {adding ? '…' : 'Add'}
+              </button>
+              <button type="button" onClick={() => setShowForm(false)}>
+                Cancel
+              </button>
+            </form>
+          )}
 
-      <div className="pantry-groups">
-        {Object.entries(grouped).map(([cat, catItems]) => (
-          <div key={cat} className="pantry-group">
-            <div className="pantry-category-label">{cat.toUpperCase()}</div>
-            <div className="pantry-pills">
-              {catItems.map(item => (
-                <div
-                  key={item.id}
-                  className={`pantry-pill${confirmDelete === item.id ? ' confirming' : ''}`}
-                >
-                  <span className="pill-name">{item.name}</span>
-                  {confirmDelete === item.id ? (
-                    <>
-                      <button
-                        className="pill-delete-confirm"
-                        onClick={() => {
-                          onRemove(item.id);
-                          setConfirmDelete(null);
-                        }}
-                        title="Remove"
-                      >
-                        ✕
-                      </button>
-                      <button
-                        className="pill-delete-cancel"
-                        onClick={() => setConfirmDelete(null)}
-                      >
-                        keep
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      className="pill-delete-btn"
-                      onClick={() => setConfirmDelete(item.id)}
-                      aria-label={`Remove ${item.name}`}
+          <div className="pantry-groups">
+            {Object.entries(grouped).map(([cat, catItems]) => (
+              <div key={cat} className="pantry-group">
+                <div className="pantry-category-label">{cat.toUpperCase()}</div>
+                <div className="pantry-pills">
+                  {catItems.map(item => (
+                    <div
+                      key={item.id}
+                      className={`pantry-pill${confirmDelete === item.id ? ' confirming' : ''}`}
                     >
-                      ×
-                    </button>
-                  )}
+                      <span className="pill-name">{item.name}</span>
+                      {confirmDelete === item.id ? (
+                        <>
+                          <button
+                            className="pill-delete-confirm"
+                            onClick={() => {
+                              onRemove(item.id);
+                              setConfirmDelete(null);
+                            }}
+                            title="Remove"
+                          >
+                            ✕
+                          </button>
+                          <button
+                            className="pill-delete-cancel"
+                            onClick={() => setConfirmDelete(null)}
+                          >
+                            keep
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          className="pill-delete-btn"
+                          onClick={() => setConfirmDelete(item.id)}
+                          aria-label={`Remove ${item.name}`}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
+            {items.length === 0 && (
+              <p className="pantry-empty">No staples yet — add your first one!</p>
+            )}
           </div>
-        ))}
-        {items.length === 0 && (
-          <p className="pantry-empty">No staples yet — add your first one!</p>
-        )}
-      </div>
+        </div>
+      )}
     </section>
   );
 }

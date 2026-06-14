@@ -12,6 +12,8 @@ export default function App() {
   const [messages, setMessages] = useState([]);
   const [pantry, setPantry] = useState([]);
   const [sending, setSending] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [lastFailedMessage, setLastFailedMessage] = useState(null);
 
   useEffect(() => {
     if (!authed) return;
@@ -31,6 +33,7 @@ export default function App() {
 
   async function selectChat(id) {
     setActiveChatId(id);
+    setLastFailedMessage(null);
     const res = await apiFetch(`/chats/${id}`);
     if (res.ok) {
       const { messages: msgs } = await res.json();
@@ -41,10 +44,12 @@ export default function App() {
   function newChat() {
     setActiveChatId(null);
     setMessages([]);
+    setLastFailedMessage(null);
   }
 
   async function sendMessage(text) {
     setMessages(prev => [...prev, { role: 'user', content: text }]);
+    setLastFailedMessage(null);
     setSending(true);
 
     try {
@@ -59,15 +64,17 @@ export default function App() {
         setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
         loadChats();
       } else {
+        setLastFailedMessage(text);
         setMessages(prev => [
           ...prev,
-          { role: 'assistant', content: 'Something went wrong. Please try again.' },
+          { role: 'assistant', content: 'Something went wrong. Please try again.', isError: true },
         ]);
       }
     } catch {
+      setLastFailedMessage(text);
       setMessages(prev => [
         ...prev,
-        { role: 'assistant', content: 'Could not reach the server. Check your connection.' },
+        { role: 'assistant', content: 'Could not reach the server. Check your connection.', isError: true },
       ]);
     }
 
@@ -101,18 +108,26 @@ export default function App() {
         activeChatId={activeChatId}
         onSelectChat={selectChat}
         onNewChat={newChat}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
       <main className="main-content">
         <header className="main-header">
-          <div className="main-header-label">
-            <span>👤</span>
-            <span>Our Kitchen</span>
-          </div>
+          <button
+            className="hamburger-btn"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open menu"
+          >
+            ☰
+          </button>
+          <span className="main-header-title">Dinner Ideas</span>
         </header>
         <ChatInterface
           messages={messages}
           sending={sending}
           onSend={sendMessage}
+          lastFailedMessage={lastFailedMessage}
+          onRetry={sendMessage}
         />
         <PantrySection
           items={pantry}

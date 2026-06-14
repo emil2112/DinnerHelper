@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
 import MessageBubble from './MessageBubble';
 
-export default function ChatInterface({ messages, sending, onSend }) {
+export default function ChatInterface({ messages, sending, onSend, lastFailedMessage, onRetry }) {
   const [input, setInput] = useState('');
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
@@ -43,9 +43,19 @@ export default function ChatInterface({ messages, sending, onSend }) {
       ) : (
         <div className="message-list">
           {messages.map((msg, i) => (
-            <MessageBubble key={i} role={msg.role} content={msg.content} />
+            <MessageBubble key={i} role={msg.role} content={msg.content} loading={false} isError={msg.isError} />
           ))}
           {sending && <MessageBubble role="assistant" content="" loading />}
+          {lastFailedMessage && !sending && (
+            <div className="retry-row">
+              <button
+                className="retry-btn"
+                onClick={() => onRetry(lastFailedMessage)}
+              >
+                ↺ Retry
+              </button>
+            </div>
+          )}
           <div ref={bottomRef} />
         </div>
       )}

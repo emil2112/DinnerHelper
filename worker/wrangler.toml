@@ -10,5 +10,5 @@ fallthrough = true
 [[d1_databases]]
 binding = "DB"
 database_name = "dinnerhelper-db"
-database_id = "REPLACE_WITH_YOUR_DATABASE_ID"
+database_id = "d70d94aa-6d62-43ad-9817-c163478d3fd0"
 migrations_dir = "../migrations"

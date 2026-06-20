@@ -5,8 +5,13 @@ import ChatInterface from './components/ChatInterface';
 import PantrySection from './components/PantrySection';
 import { apiFetch } from './lib/api';
 
+const DEV_MODE = import.meta.env.VITE_SKIP_AUTH === 'true';
+if (DEV_MODE && !localStorage.getItem('dinnerhelper-auth')) {
+  localStorage.setItem('dinnerhelper-auth', import.meta.env.VITE_DEV_PASSPHRASE || 'dev');
+}
+
 export default function App() {
-  const [authed, setAuthed] = useState(!!localStorage.getItem('dinnerhelper-auth'));
+  const [authed, setAuthed] = useState(DEV_MODE || !!localStorage.getItem('dinnerhelper-auth'));
   const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [messages, setMessages] = useState([]);

@@ -1,83 +1,74 @@
-// Job D — Plate completion (docs/prompts-v2.md). Called from the suggestion panel: the default
-// "Suggest an addition" tap and free-text prompt-bar submissions both land here.
+// Job D — Plate completion (docs/prompts-v2.md, rewritten per docs/simplification.md). Elements
+// are free-text strings now — no role/equipment/serve_temp metadata exists to send or receive.
 import { buildProfileBlock } from './profileBlock.js';
 
 const SYSTEM_TEMPLATE = `{PROFILE}
 
 ## YOUR TASK
-The user is assembling a dinner plate from separate elements. You will be given the elements
-already on the plate, and optionally a request in their own words.
+The user is assembling a dinner plate from separate elements, described in their own words.
+You will be given the elements already on the plate, and optionally a request from the user.
 
 Suggest additions that would complete or improve the plate.
 
 ## RULES
-- Look at the plate as a whole. What is it missing — protein, a carbohydrate, a cold element,
+- Read the plate as a whole. What is missing — protein, a carbohydrate, a cold element,
   acidity, texture, colour?
+- Never suggest something already on the plate, or a variation of it. If the plate has roasted
+  chicken, do not suggest any other chicken, or any other main protein, unless the user asks.
 - If everything on the plate is hot and cooked, a cold or acidic element is almost always the
-  right answer. This is the single most reliable improvement to their plates.
-- Respect the equipment state you are given. If the oven is full or at a fixed temperature,
-  suggest hob or no-cook elements and say so briefly.
-- Respect the time budget. If they have 10 minutes of hands-on time left, do not suggest
-  something needing 25.
-- Obey the dietary rules absolutely. Onion in any form is the most common failure — check
-  yourself before answering.
-- If the user has made a request in their own words, that request outranks your own read of
-  the plate. "Something lighter" means lighter, even if you think it needs a carb.
+  right answer. This is the most reliable single improvement to their plates.
+- Infer equipment from how the user described each element. "Oven-roasted" means the oven is
+  in use; "pan-seared" means a hob ring is busy. Avoid suggesting a third or fourth thing that
+  needs the same equipment at the same time, and say so briefly when it constrains you.
+- Obey the dietary rules absolutely. Onion is the most common failure — check yourself.
+- GARLIC: only ever as whole cloves added during cooking and removed before serving. Never name
+  a suggestion in a way that implies garlic remains in the dish. "Spinach with garlic" is
+  WRONG. "Spinach wilted with a whole garlic clove, removed" is correct, and better still is a
+  suggestion that simply doesn't need garlic.
+- If the user has made a request in their own words, it outranks your own read of the plate.
+  "Something lighter" means lighter, even if you think it needs a carb.
 - Be specific and confident. "Cucumber and dill salad with lemon" is useful. "A fresh salad"
   is not.
-- Suggest 3 additions. Each genuinely different from the others — not three salads.
-- Never suggest something already on the plate, or a near-duplicate of it.
+- Suggest 3 additions, each genuinely different from the others — not three salads.
 
 ## OUTPUT
 Return ONLY a JSON array. No prose before or after.
 
 [
   {
-    "display_name": "cucumber and dill salad with lemon",
-    "role": "veg",
-    "equipment": "none",
-    "active_min": 8,
-    "passive_min": 0,
-    "oven_temp_c": null,
-    "serve_temp": "cold",
-    "texture_tags": ["crunchy", "fresh"],
-    "flavour_tags": ["acidic", "herbal"],
-    "method_summary": "One sentence on how it's made.",
+    "text": "cucumber and dill salad with lemon",
     "why": "One short sentence on what it adds to THIS plate specifically."
   }
 ]
 
-Field rules:
-- "equipment": one of "oven" | "hob" | "none" | "grill"
-- "oven_temp_c": REQUIRED integer when equipment is "oven", otherwise null
-- "role": one of "protein" | "carb" | "veg" | "sauce" | "bread" | "other"`;
+"text" is what will appear in the user's plate box — write it the way they would.
+"why" must reference the actual plate. "Cuts through two rich oven elements" is right.
+"Fresh and healthy" is not.`;
 
-function equipmentState(plateComponents) {
-  const ovenComponents = plateComponents.filter((c) => c.equipment === 'oven');
-  if (ovenComponents.length === 0) return 'free';
-  const temps = [...new Set(ovenComponents.map((c) => c.oven_temp_c))];
-  return `in use at ${temps.join('°C / ')}°C`;
+// Server-side backstop for the two failure modes seen live (docs/simplification.md): reject any
+// suggestion whose text mentions onion at all, or mentions garlic without also saying it's
+// removed. This is deliberately blunt string matching, not an LLM judgement call.
+const ONION_RE = /\bonions?\b/i;
+const GARLIC_RE = /\bgarlic\b/i;
+const REMOVED_RE = /removed?\b/i;
+
+function violatesDietaryRules(text) {
+  if (ONION_RE.test(text)) return true;
+  if (GARLIC_RE.test(text) && !REMOVED_RE.test(text)) return true;
+  return false;
 }
 
-function buildUserMessage({ plateComponents, profile, energy, budget, month, userRequest, recentMealElementNames }) {
-  const lines = plateComponents.map(
-    (c) =>
-      `${c.display_name} | ${c.role} | ${c.equipment} | ${c.oven_temp_c ?? 'n/a'} | ${c.serve_temp} | ${c.flavour_tags.join(',')} | ${c.active_min} min`
-  );
-  const hobCount = plateComponents.filter((c) => c.equipment === 'hob').length;
-  const activeSum = plateComponents.reduce((s, c) => s + c.active_min, 0);
-
+function buildUserMessage({ elements, energy, month, userRequest, recentMealElementNames }) {
+  const lines = elements.map((text) => `- ${text}`);
   return `Current plate:
 ${lines.length ? lines.join('\n') : '(empty — nothing added yet)'}
 
-Oven state: ${equipmentState(plateComponents)}
-Hob elements in use: ${hobCount} of ${profile.hob_capacity}
-Active minutes used: ${activeSum} of ${budget.active_cap_min} (${energy})
+Effort level: ${energy}
 Current month: ${month} (Denmark)
 
 ${userRequest || 'No specific request. Suggest what would complete this plate.'}
 
-Recent meals (avoid repeating):
+Recently cooked (avoid repeating):
 ${recentMealElementNames.length ? recentMealElementNames.join(', ') : 'None logged yet.'}`;
 }
 
@@ -119,5 +110,16 @@ export async function suggestAdditions(apiKey, params) {
 
   const data = await res.json();
   const replyText = data.content[0].text;
-  return { suggestions: parseJsonArray(replyText), userMessage, replyText };
+  const parsed = parseJsonArray(replyText);
+
+  const suggestions = [];
+  for (const s of parsed) {
+    if (violatesDietaryRules(s.text)) {
+      console.log(`Job D rejected (dietary rule backstop): "${s.text}"`);
+      continue;
+    }
+    suggestions.push(s);
+  }
+
+  return { suggestions, userMessage, replyText };
 }

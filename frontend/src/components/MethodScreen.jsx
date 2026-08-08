@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchMethod } from '../lib/api';
 
-export default function MethodScreen({ plateComponents, energy, defaultServings, onBack }) {
+export default function MethodScreen({ elements, energy, defaultServings, onBack }) {
   const [servings, setServings] = useState(defaultServings || 2);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -13,7 +13,7 @@ export default function MethodScreen({ plateComponents, energy, defaultServings,
       setError(null);
       try {
         const res = await fetchMethod({
-          componentIds: plateComponents.map((c) => c.id),
+          elements,
           servings: nextServings,
           energy,
         });
@@ -30,7 +30,7 @@ export default function MethodScreen({ plateComponents, energy, defaultServings,
       setLoading(false);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [plateComponents, energy]
+    [elements, energy]
   );
 
   useEffect(() => {

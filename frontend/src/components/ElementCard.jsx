@@ -1,24 +1,43 @@
-function equipmentLabel(component) {
-  if (component.equipment === 'oven') return `Oven · ${component.oven_temp_c}°C`;
-  if (component.equipment === 'hob') return 'Hob';
-  if (component.equipment === 'grill') return 'Grill';
-  return 'No cook';
-}
+import { useState } from 'react';
 
-export default function ElementCard({ component, onRemove }) {
+export default function ElementCard({ text, onEdit, onRemove }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(text);
+
+  function startEdit() {
+    setDraft(text);
+    setEditing(true);
+  }
+
+  function commit() {
+    const trimmed = draft.trim();
+    if (trimmed) onEdit(trimmed);
+    setEditing(false);
+  }
+
+  function onKeyDown(e) {
+    if (e.key === 'Enter') commit();
+    if (e.key === 'Escape') setEditing(false);
+  }
+
   return (
     <div className="element-card">
-      <div className="element-name">{component.display_name}</div>
-      <div className="element-meta">
-        {equipmentLabel(component)} · {component.active_min}
-        {component.passive_min > 0 ? `+${component.passive_min}` : ''} min · {component.serve_temp}
-      </div>
-      <button
-        type="button"
-        className="element-remove-btn"
-        onClick={onRemove}
-        aria-label={`Remove ${component.display_name}`}
-      >
+      {editing ? (
+        <input
+          type="text"
+          className="element-edit-input"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={onKeyDown}
+          autoFocus
+        />
+      ) : (
+        <button type="button" className="element-name" onClick={startEdit}>
+          {text}
+        </button>
+      )}
+      <button type="button" className="element-remove-btn" onClick={onRemove} aria-label={`Remove ${text}`}>
         Remove
       </button>
     </div>

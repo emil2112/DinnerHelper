@@ -17,34 +17,20 @@ export async function fetchProfile() {
   return apiFetch('/profile');
 }
 
-export async function searchComponents(query) {
-  return apiFetch(`/components/search?q=${encodeURIComponent(query)}`);
+export async function searchElements(query) {
+  return apiFetch(`/elements/search?q=${encodeURIComponent(query)}`);
 }
 
-export async function createManualComponent(fields) {
-  return apiFetch('/components/manual', {
-    method: 'POST',
-    body: JSON.stringify(fields),
-  });
-}
-
-export async function saveSuggestedComponent(fields) {
-  return apiFetch('/components/save-suggestion', {
-    method: 'POST',
-    body: JSON.stringify(fields),
-  });
-}
-
-export async function requestSuggestions({ energy, componentIds, prompt, history }) {
+export async function requestSuggestions({ energy, elements, prompt, history }) {
   return apiFetch('/suggest', {
     method: 'POST',
-    body: JSON.stringify({ energy, component_ids: componentIds, prompt, history }),
+    body: JSON.stringify({ energy, elements, prompt, history }),
   });
 }
 
-export async function fetchMethod({ componentIds, servings, energy }) {
+export async function fetchMethod({ elements, servings, energy }) {
   return apiFetch('/method', {
     method: 'POST',
-    body: JSON.stringify({ component_ids: componentIds, servings, energy }),
+    body: JSON.stringify({ elements, servings, energy }),
   });
 }

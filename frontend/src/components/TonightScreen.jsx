@@ -1,6 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { fetchProfile, requestSuggestions, saveSuggestedComponent } from '../lib/api';
-import { checkFeasibility } from '../lib/feasibility';
+import { useState, useEffect } from 'react';
+import { fetchProfile, requestSuggestions } from '../lib/api';
 import ElementCard from './ElementCard';
 import AddElementCard from './AddElementCard';
 import SuggestionPanel from './SuggestionPanel';
@@ -22,9 +21,7 @@ export default function TonightScreen({ onOpenChat }) {
   const [suggestVisible, setSuggestVisible] = useState(false);
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [suggestError, setSuggestError] = useState(null);
-  const [library, setLibrary] = useState([]);
-  const [novel, setNovel] = useState([]);
-  const [savingKeys, setSavingKeys] = useState(new Set());
+  const [suggestions, setSuggestions] = useState([]);
   const [history, setHistory] = useState([]);
 
   useEffect(() => {
@@ -33,23 +30,16 @@ export default function TonightScreen({ onOpenChat }) {
     });
   }, []);
 
-  const budget = useMemo(() => {
-    if (!profile) return null;
-    try {
-      return JSON.parse(profile.energy_budgets)[energy];
-    } catch {
-      return null;
-    }
-  }, [profile, energy]);
-
-  const feasibility = useMemo(() => checkFeasibility(elements, profile, budget), [elements, profile, budget]);
-
-  function addElement(component) {
-    setElements((prev) => (prev.some((e) => e.id === component.id) ? prev : [...prev, component]));
+  function addElement(text) {
+    setElements((prev) => [...prev, text]);
   }
 
-  function removeElement(id) {
-    setElements((prev) => prev.filter((e) => e.id !== id));
+  function editElement(index, text) {
+    setElements((prev) => prev.map((e, i) => (i === index ? text : e)));
+  }
+
+  function removeElement(index) {
+    setElements((prev) => prev.filter((_e, i) => i !== index));
   }
 
   async function runSuggest(promptText) {
@@ -59,7 +49,7 @@ export default function TonightScreen({ onOpenChat }) {
     try {
       const res = await requestSuggestions({
         energy,
-        componentIds: elements.map((e) => e.id),
+        elements,
         prompt: promptText || null,
         history,
       });
@@ -69,9 +59,7 @@ export default function TonightScreen({ onOpenChat }) {
         return;
       }
       const data = await res.json();
-      setLibrary(data.library);
-      setNovel(data.new);
-      setSavingKeys(new Set());
+      setSuggestions(data.suggestions);
       if (data.assistant_reply && data.user_message) {
         setHistory((prev) => [
           ...prev,
@@ -85,32 +73,13 @@ export default function TonightScreen({ onOpenChat }) {
     setSuggestLoading(false);
   }
 
-  async function saveNovelSuggestion(suggestion, key) {
-    setSavingKeys((prev) => new Set(prev).add(key));
-    const res = await saveSuggestedComponent({
-      display_name: suggestion.display_name,
-      role: suggestion.role,
-      equipment: suggestion.equipment,
-      active_min: suggestion.active_min,
-      passive_min: suggestion.passive_min,
-      oven_temp_c: suggestion.oven_temp_c,
-      serve_temp: suggestion.serve_temp,
-      texture_tags: suggestion.texture_tags,
-      flavour_tags: suggestion.flavour_tags,
-    });
-    if (res.ok) {
-      const component = await res.json();
-      addElement(component);
-    }
-  }
-
   const promptPlaceholder =
     elements.length === 0 ? 'What are you starting with?' : 'Ask for an addition, or tell me what you want…';
 
   if (screen === 'method') {
     return (
       <MethodScreen
-        plateComponents={elements}
+        elements={elements}
         energy={energy}
         defaultServings={profile?.default_servings || 2}
         onBack={() => setScreen('plate')}
@@ -139,29 +108,18 @@ export default function TonightScreen({ onOpenChat }) {
       </div>
 
       <div className="slot-list">
-        {elements.map((component) => (
-          <ElementCard key={component.id} component={component} onRemove={() => removeElement(component.id)} />
+        {elements.map((text, i) => (
+          <ElementCard
+            key={i}
+            text={text}
+            onEdit={(newText) => editElement(i, newText)}
+            onRemove={() => removeElement(i)}
+          />
         ))}
         <AddElementCard onAdd={addElement} />
       </div>
 
-      {feasibility.warnings.length > 0 && (
-        <div className="feasibility-warnings">
-          {feasibility.warnings.map((w) => (
-            <div className="feasibility-warning" key={w}>
-              ⚠ {w}
-            </div>
-          ))}
-        </div>
-      )}
-
       <div className="tonight-footer">
-        <div className="total-time">
-          <span className={`total-time-value${feasibility.over_budget ? ' amber' : ''}`}>
-            {feasibility.active_min}
-          </span>
-          <span className="total-time-label">active min</span>
-        </div>
         <button type="button" className="suggest-btn" onClick={() => runSuggest(null)} disabled={suggestLoading}>
           Suggest an addition
         </button>
@@ -179,11 +137,8 @@ export default function TonightScreen({ onOpenChat }) {
         <SuggestionPanel
           loading={suggestLoading}
           error={suggestError}
-          library={library}
-          novel={novel}
-          onAddLibrary={addElement}
-          onSaveNovel={saveNovelSuggestion}
-          savingKeys={savingKeys}
+          suggestions={suggestions}
+          onAdd={addElement}
         />
       )}
 

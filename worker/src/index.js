@@ -1,15 +1,12 @@
 import { validateAuth } from './auth.js';
 import { callAnthropic } from './anthropic.js';
-import { energyBudget, rankLibraryCandidates, checkFeasibility } from './composer.js';
 import { suggestAdditions } from './jobD.js';
 import { generateMethod } from './jobC.js';
 import {
   listChats, createChat, getChat, addMessage, deleteChat, renameChat,
   listPantry, addPantryItem, deletePantryItem,
   listRecipes, saveRecipe, deleteRecipe,
-  listApprovedComponents, getComponentsByIds, searchComponents, createComponent,
-  getProfile, recordSuggestion, listRecentSuggestionComponentIds,
-  plateSignature, getCachedMethod, cacheMethod,
+  searchElements, getProfile, plateSignature, getCachedMethod, cacheMethod,
 } from './db.js';
 
 const ALLOWED_ORIGINS = [
@@ -121,81 +118,36 @@ export default {
         return json(await getProfile(env.DB), 200, corsHeaders);
       }
 
-      // GET /components/search?q=...
-      if (method === 'GET' && pathname === '/components/search') {
+      // GET /elements/search?q=... — autocomplete over element_history + components.display_name
+      if (method === 'GET' && pathname === '/elements/search') {
         const q = url.searchParams.get('q') || '';
         if (q.trim().length < 2) return json([], 200, corsHeaders);
-        return json(await searchComponents(env.DB, q.trim()), 200, corsHeaders);
+        return json(await searchElements(env.DB, q.trim()), 200, corsHeaders);
       }
 
-      // POST /components/manual — "add as new component" path (source='manual')
-      if (method === 'POST' && pathname === '/components/manual') {
-        const body = await request.json();
-        const component = await createComponent(env.DB, body, 'manual');
-        return json(component, 200, corsHeaders);
-      }
-
-      // POST /components/save-suggestion — one-tap save of a Job D result (source='llm')
-      if (method === 'POST' && pathname === '/components/save-suggestion') {
-        const body = await request.json();
-        const component = await createComponent(env.DB, body, 'llm');
-        return json(component, 200, corsHeaders);
-      }
-
-      // POST /suggest — the suggestion panel: library ranking (composer scoring) + Job D, side by side
+      // POST /suggest — Job D only. No library ranking, no feasibility (docs/simplification.md).
       if (method === 'POST' && pathname === '/suggest') {
         const body = await request.json().catch(() => ({}));
         const energy = ['low', 'normal', 'cook'].includes(body.energy) ? body.energy : 'normal';
-        const plateIds = Array.isArray(body.component_ids) ? body.component_ids : [];
+        const elements = Array.isArray(body.elements) ? body.elements : [];
         const userRequest = typeof body.prompt === 'string' && body.prompt.trim() ? body.prompt.trim() : null;
         const history = Array.isArray(body.history) ? body.history : [];
 
-        const [allComponents, plateComponents, profile, recentIds] = await Promise.all([
-          listApprovedComponents(env.DB),
-          getComponentsByIds(env.DB, plateIds),
-          getProfile(env.DB),
-          listRecentSuggestionComponentIds(env.DB),
-        ]);
-
+        const profile = await getProfile(env.DB);
         const month = new Date().getUTCMonth() + 1;
-        const budget = energyBudget(energy, profile);
 
-        const library = rankLibraryCandidates({
-          components: allComponents,
-          plateComponents,
+        const jobD = await suggestAdditions(env.ANTHROPIC_API_KEY, {
+          elements,
+          profile,
+          energy,
           month,
-          recentIds,
-          limit: 6,
+          userRequest,
+          recentMealElementNames: [], // meals table is unused until Phase 4
+          history,
         });
-        const feasibility = checkFeasibility(plateComponents, profile, budget);
-
-        let novel = [];
-        let assistantReply = null;
-        let sentUserMessage = null;
-        try {
-          const jobD = await suggestAdditions(env.ANTHROPIC_API_KEY, {
-            plateComponents,
-            profile,
-            energy,
-            budget,
-            month,
-            userRequest,
-            recentMealElementNames: [], // meals table is unused until Phase 4
-            history,
-          });
-          novel = jobD.suggestions;
-          assistantReply = jobD.replyText;
-          sentUserMessage = jobD.userMessage;
-        } catch (e) {
-          // Library ranking still works without the LLM — degrade, don't fail the whole panel.
-          novel = [];
-          assistantReply = null;
-        }
-
-        if (library.length) await recordSuggestion(env.DB, library.map((c) => c.id));
 
         return json(
-          { library, new: novel, feasibility, assistant_reply: assistantReply, user_message: sentUserMessage },
+          { suggestions: jobD.suggestions, assistant_reply: jobD.replyText, user_message: jobD.userMessage },
           200,
           corsHeaders
         );
@@ -204,24 +156,23 @@ export default {
       // POST /method — "Cook this". Cached by (plate signature, servings); cache hit = no LLM call.
       if (method === 'POST' && pathname === '/method') {
         const body = await request.json().catch(() => ({}));
-        const plateIds = Array.isArray(body.component_ids) ? body.component_ids : [];
-        if (!plateIds.length) {
-          return json({ error: 'component_ids is required' }, 400, corsHeaders);
+        const elements = Array.isArray(body.elements) ? body.elements : [];
+        if (!elements.length) {
+          return json({ error: 'elements is required' }, 400, corsHeaders);
         }
         const energy = ['low', 'normal', 'cook'].includes(body.energy) ? body.energy : 'normal';
 
         const profile = await getProfile(env.DB);
         const servings = Number.isInteger(body.servings) ? body.servings : profile.default_servings;
 
-        const signature = plateSignature(plateIds);
+        const signature = await plateSignature(elements);
         const cached = await getCachedMethod(env.DB, signature, servings);
         if (cached) {
           return json({ ...cached, cached: true }, 200, corsHeaders);
         }
 
-        const plateComponents = await getComponentsByIds(env.DB, plateIds);
         const payload = await generateMethod(env.ANTHROPIC_API_KEY, {
-          plateComponents,
+          elements,
           profile,
           servings,
           energy,

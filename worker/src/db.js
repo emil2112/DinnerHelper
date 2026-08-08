@@ -63,140 +63,51 @@ export async function deletePantryItem(db, id) {
   await db.prepare('DELETE FROM pantry_staples WHERE id = ?').bind(id).run();
 }
 
-function parseComponentRow(r) {
-  return {
-    ...r,
-    texture_tags: JSON.parse(r.texture_tags),
-    flavour_tags: JSON.parse(r.flavour_tags),
-    season_months: JSON.parse(r.ingredient_season_months),
-  };
-}
-
-const COMPONENT_SELECT = `
-  SELECT c.*, i.name AS ingredient_name, i.season_months AS ingredient_season_months
-  FROM components c
-  JOIN ingredients i ON i.id = c.ingredient_id
-`;
-
-export async function listApprovedComponents(db) {
-  const { results } = await db.prepare(`${COMPONENT_SELECT} WHERE c.status = 'approved'`).all();
-  return results.map(parseComponentRow);
-}
-
-export async function getComponentsByIds(db, ids) {
-  if (!ids.length) return [];
-  const placeholders = ids.map(() => '?').join(',');
-  const { results } = await db
-    .prepare(`${COMPONENT_SELECT} WHERE c.id IN (${placeholders})`)
-    .bind(...ids)
-    .all();
-  return results.map(parseComponentRow);
-}
-
-// Autocomplete: match against display_name or a recorded alias. LEFT JOIN can produce one row
-// per matching alias for the same component, so dedupe by id before returning.
-export async function searchComponents(db, query, limit = 8) {
+// Autocomplete (docs/simplification.md): element_history first (ranked by use), then
+// components.display_name as a starting corpus once history runs dry. Plain strings only —
+// components/ingredients/techniques are kept around solely to seed this, nothing else reads
+// role/equipment/tags from them any more.
+export async function searchElements(db, query, limit = 8) {
   const like = `%${query}%`;
-  const { results } = await db
-    .prepare(`
-      SELECT c.*, i.name AS ingredient_name, i.season_months AS ingredient_season_months
-      FROM components c
-      JOIN ingredients i ON i.id = c.ingredient_id
-      LEFT JOIN component_aliases a ON a.component_id = c.id
-      WHERE c.status = 'approved' AND (c.display_name LIKE ? OR a.alias LIKE ?)
-      ORDER BY c.display_name
-    `)
-    .bind(like, like)
+
+  const { results: historyResults } = await db
+    .prepare('SELECT text FROM element_history WHERE text LIKE ? ORDER BY times_used DESC, last_used_at DESC LIMIT ?')
+    .bind(like, limit)
     .all();
-  const seen = new Map();
-  for (const r of results) {
-    if (!seen.has(r.id)) seen.set(r.id, parseComponentRow(r));
+
+  const seen = new Set(historyResults.map((r) => r.text.toLowerCase()));
+  const out = historyResults.map((r) => r.text);
+
+  if (out.length < limit) {
+    const { results: componentResults } = await db
+      .prepare('SELECT DISTINCT display_name FROM components WHERE display_name LIKE ? LIMIT ?')
+      .bind(like, limit)
+      .all();
+    for (const r of componentResults) {
+      if (out.length >= limit) break;
+      const key = r.display_name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(r.display_name);
+    }
   }
-  return [...seen.values()].slice(0, limit);
-}
 
-// Find-or-create the ingredient/technique pair a new component needs. Manual and saved-suggestion
-// components reuse this rather than requiring a curated ingredient/technique to already exist —
-// the ingredient becomes the element's own name, and the technique is a generic per-equipment
-// bucket, since a typed-in element like "lemon-dill dressing" isn't naturally an existing
-// ingredient x technique pair the way seeded components are.
-async function findOrCreateIngredient(db, name, role) {
-  const existing = await db.prepare('SELECT id FROM ingredients WHERE name = ?').bind(name).first();
-  if (existing) return existing.id;
-  const { meta } = await db
-    .prepare("INSERT INTO ingredients (name, role, season_months) VALUES (?, ?, '[]')")
-    .bind(name, role)
-    .run();
-  return meta.last_row_id;
-}
-
-async function findOrCreateTechnique(db, equipment, activeMin) {
-  const name = `manual-${equipment}`;
-  const existing = await db.prepare('SELECT id FROM techniques WHERE name = ?').bind(name).first();
-  if (existing) return existing.id;
-  const { meta } = await db
-    .prepare('INSERT INTO techniques (name, equipment, default_active_min, default_passive_min) VALUES (?, ?, ?, 0)')
-    .bind(name, equipment, activeMin)
-    .run();
-  return meta.last_row_id;
-}
-
-export async function createComponent(db, fields, source) {
-  const {
-    display_name, role, equipment, active_min, passive_min = 0,
-    oven_temp_c = null, serve_temp = 'hot', texture_tags = [], flavour_tags = [],
-  } = fields;
-
-  const ingredientId = await findOrCreateIngredient(db, display_name, role);
-  const techniqueId = await findOrCreateTechnique(db, equipment, active_min);
-
-  const existing = await db
-    .prepare('SELECT id FROM components WHERE ingredient_id = ? AND technique_id = ?')
-    .bind(ingredientId, techniqueId)
-    .first();
-  if (existing) return getComponentsByIds(db, [existing.id]).then((rows) => rows[0]);
-
-  const { meta } = await db
-    .prepare(`
-      INSERT INTO components (
-        ingredient_id, technique_id, display_name, role, equipment, active_min, passive_min,
-        oven_temp_c, serve_temp, texture_tags, flavour_tags, status, source
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?)
-    `)
-    .bind(
-      ingredientId, techniqueId, display_name, role, equipment, active_min, passive_min,
-      oven_temp_c, serve_temp, JSON.stringify(texture_tags), JSON.stringify(flavour_tags), source
-    )
-    .run();
-
-  return getComponentsByIds(db, [meta.last_row_id]).then((rows) => rows[0]);
+  return out;
 }
 
 export async function getProfile(db) {
   return db.prepare('SELECT * FROM profile WHERE id = 1').first();
 }
 
-export async function recordSuggestion(db, componentIds) {
-  await db
-    .prepare('INSERT INTO suggestions (component_ids, accepted) VALUES (?, 0)')
-    .bind(JSON.stringify(componentIds))
-    .run();
-}
-
-export async function listRecentSuggestionComponentIds(db, limit = 5) {
-  const { results } = await db
-    .prepare('SELECT component_ids FROM suggestions ORDER BY created_at DESC LIMIT ?')
-    .bind(limit)
-    .all();
-  const ids = new Set();
-  for (const row of results) {
-    for (const id of JSON.parse(row.component_ids)) ids.add(id);
-  }
-  return ids;
-}
-
-export function plateSignature(componentIds) {
-  return [...componentIds].sort((a, b) => a - b).join(',');
+// Hash of the sorted, lowercased, trimmed element strings, joined with servings to form the
+// method_cache key (docs/simplification.md).
+export async function plateSignature(elements) {
+  const normalized = elements
+    .map((e) => e.trim().toLowerCase())
+    .sort()
+    .join('|');
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(normalized));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 export async function getCachedMethod(db, signature, servings) {

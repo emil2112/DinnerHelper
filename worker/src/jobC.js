@@ -1,6 +1,6 @@
-// Job C — Method (docs/prompts-v2.md). Runs once per (plate signature, servings); the caller is
-// responsible for checking method_cache first — this module only builds the prompt and calls
-// Anthropic. Handles an arbitrary number of elements, any mix of roles, per the Phase 3 brief.
+// Job C — Method (docs/prompts-v2.md, updated per docs/simplification.md). Elements are
+// free-text strings — there is no structured metadata to send. Equipment, temperature and
+// timing are inferred by the model from the description, same as Job D now does.
 import { buildProfileBlock } from './profileBlock.js';
 
 const SYSTEM_TEMPLATE = `{PROFILE}
@@ -10,6 +10,12 @@ You are given the elements of one dinner — an arbitrary number, not a fixed fo
 necessarily one of each role. It may include sauces or dressings alongside protein/carb/veg
 elements. Produce (1) ingredient quantities for each element, and (2) a single interleaved
 cooking timeline covering all of them together.
+
+You are given elements as the user described them, without structured metadata. Infer
+equipment, oven temperature and timing from the description. "Oven-roasted potato wedges"
+means the oven at roughly 200 °C for around 40 minutes. Where two elements need the oven,
+choose one temperature that works for both and adjust timings accordingly. State the
+temperature you have chosen in the first step.
 
 The timeline is the important part. Do not write separate recipes stacked on top of each other
 — write one schedule for cooking every element as one meal, so everything is ready at the same
@@ -53,16 +59,14 @@ Return ONLY JSON. No prose before or after.
   "notes": ["Optional. Serving or portioning notes. Omit if there is nothing worth saying."]
 }`;
 
-function buildUserMessage({ plateComponents, servings, energy }) {
-  const lines = plateComponents.map(
-    (c) => `${c.display_name} | ${c.role} | ${c.equipment} | ${c.oven_temp_c ?? 'n/a'} | ${c.active_min} | ${c.passive_min}`
-  );
+function buildUserMessage({ elements, servings, energy }) {
+  const lines = elements.map((text) => `- ${text}`);
   return `Servings: ${servings}
 
 Elements:
 ${lines.join('\n')}
 
-Energy level: ${energy}`;
+Effort level: ${energy}`;
 }
 
 function parseJsonObject(text) {
@@ -75,12 +79,12 @@ function parseJsonObject(text) {
   }
 }
 
-export async function generateMethod(apiKey, { plateComponents, profile, servings, energy }) {
+export async function generateMethod(apiKey, { elements, profile, servings, energy }) {
   const systemPrompt = SYSTEM_TEMPLATE.replace('{PROFILE}', buildProfileBlock(profile)).replace(
     '{servings}',
     String(servings)
   );
-  const userMessage = buildUserMessage({ plateComponents, servings, energy });
+  const userMessage = buildUserMessage({ elements, servings, energy });
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',

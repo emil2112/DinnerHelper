@@ -13,11 +13,11 @@ schemas are far more reliable.
 | **C** | Method | On commit to a plate | JSON: quantities + interleaved timeline |
 | **D** | Plate completion | Suggestion panel — "Suggest an addition" or the prompt bar | JSON array of candidate additions |
 
-Composition itself is **code, not LLM** — see the brief. As of `docs/phase-2-revision.md`, the
-composer's role narrowed to library ranking; Job D is what looks at a user-built plate and
-proposes what's missing. Job B (plate rationale) is gone — it existed to explain plates the
-composer chose for you; plates are user-composed now, so there is nothing left for it to
-narrate.
+Composition itself is **code, not LLM** — see the brief. `docs/phase-2-revision.md` narrowed the
+composer to a library-ranking function; `docs/simplification.md` (current) removed the composer
+and the library entirely — elements are free text, and Job D is the only suggestion source, full
+stop. Job B (plate rationale) is gone too — it existed to explain plates the composer chose for
+you; plates are user-composed now, so there was nothing left for it to narrate.
 
 ---
 
@@ -170,12 +170,13 @@ Propose {n} new components.
 
 ## Job C — Method
 
-Runs once, on commit ("Cook this"). Cached against the plate signature (sorted component ids)
-plus servings, so a repeated plate is free — see `docs/dinner-app-overhaul-brief.md` §4/§7.
+Runs once, on commit ("Cook this"). Cached against a hash of the sorted, lowercased, trimmed
+element strings plus servings, so a repeated plate is free — see
+`docs/dinner-app-overhaul-brief.md` §4/§7 and `docs/simplification.md`.
 
-The plate is a user-built, free-form list — see `docs/phase-2-revision.md`. There is no fixed
-slot count and no guaranteed role mix: it may be two elements or seven, and it may include
-`sauce`/`bread`/`other` elements (dressings, flatbread) alongside protein/carb/veg.
+The plate is a user-built, free-form list of plain strings — no role, equipment, temperature or
+timing metadata exists anywhere (`docs/simplification.md`). It may be two elements or seven, any
+mix of protein/carb/veg/sauce/bread.
 
 ### System prompt
 
@@ -187,6 +188,12 @@ You are given the elements of one dinner — an arbitrary number, not a fixed fo
 necessarily one of each role. It may include sauces or dressings alongside protein/carb/veg
 elements. Produce (1) ingredient quantities for each element, and (2) a single interleaved
 cooking timeline covering all of them together.
+
+You are given elements as the user described them, without structured metadata. Infer
+equipment, oven temperature and timing from the description. "Oven-roasted potato wedges"
+means the oven at roughly 200 °C for around 40 minutes. Where two elements need the oven,
+choose one temperature that works for both and adjust timings accordingly. State the
+temperature you have chosen in the first step.
 
 The timeline is the important part. Do not write separate recipes stacked on top of each other
 — write one schedule for cooking every element as one meal, so everything is ready at the same
@@ -237,24 +244,29 @@ Return ONLY JSON. No prose before or after.
 Servings: {n}
 
 Elements:
-{for each: display_name | role | equipment | oven_temp_c | active_min | passive_min}
+- {element text}
+- {element text}
 
-Energy level: {low|normal|cook}
+Effort level: {low|normal|cook}
 ```
 
-`method_summary` is not part of the element data sent here — it's an ephemeral field Jobs A and
-D produce for their own candidate output, never persisted to `components`. Job C works from
-`display_name` plus the structural fields above; seeded/manual/saved elements all carry the same
-shape by the time they reach this prompt, so nothing here needs to know how an element was
-added.
+Elements are free text now — see `docs/simplification.md`. There is no structured metadata to
+send; Job C infers equipment, oven temperature and timing from the description itself, the same
+way Job D does. `method_summary` never existed as a real field on anything persisted — it was
+always ephemeral Job A/D candidate output — so there was nothing lost by dropping it earlier.
 
 ---
 
 ## Job D — Plate completion
 
 Runs from the suggestion panel: "Suggest an addition", or free text typed into the prompt bar.
-Always sent the whole plate as built so far, plus equipment/time state and (optionally) what the
-user typed. See `docs/phase-2-revision.md` for the model this replaced (reroll composer) and why.
+Always sent the whole plate as built so far (plain element strings, no metadata) and
+(optionally) what the user typed. Rewritten per `docs/simplification.md` after live testing
+surfaced two failures in the previous (component-object) version: the library-ranking half kept
+suggesting a second protein when one was already on the plate, and Job D itself produced "pan-
+wilted spinach with garlic and lemon zest" — garlic left in the dish, a dietary rule violation.
+The library ranking is gone entirely (elements have no role/tags to rank on); Job D gets an
+explicit garlic rule below, plus a server-side backstop that filters its output regardless.
 
 ### System prompt
 
@@ -262,68 +274,69 @@ user typed. See `docs/phase-2-revision.md` for the model this replaced (reroll c
 {PROFILE}
 
 ## YOUR TASK
-The user is assembling a dinner plate from separate elements. You will be given the elements
-already on the plate, and optionally a request in their own words.
+The user is assembling a dinner plate from separate elements, described in their own words.
+You will be given the elements already on the plate, and optionally a request from the user.
 
 Suggest additions that would complete or improve the plate.
 
 ## RULES
-- Look at the plate as a whole. What is it missing — protein, a carbohydrate, a cold element,
+- Read the plate as a whole. What is missing — protein, a carbohydrate, a cold element,
   acidity, texture, colour?
+- Never suggest something already on the plate, or a variation of it. If the plate has roasted
+  chicken, do not suggest any other chicken, or any other main protein, unless the user asks.
 - If everything on the plate is hot and cooked, a cold or acidic element is almost always the
-  right answer. This is the single most reliable improvement to their plates.
-- Respect the equipment state you are given. If the oven is full or at a fixed temperature,
-  suggest hob or no-cook elements and say so briefly.
-- Respect the time budget. If they have 10 minutes of hands-on time left, do not suggest
-  something needing 25.
-- Obey the dietary rules absolutely. Onion in any form is the most common failure — check
-  yourself before answering.
-- If the user has made a request in their own words, that request outranks your own read of
-  the plate. "Something lighter" means lighter, even if you think it needs a carb.
+  right answer. This is the most reliable single improvement to their plates.
+- Infer equipment from how the user described each element. "Oven-roasted" means the oven is
+  in use; "pan-seared" means a hob ring is busy. Avoid suggesting a third or fourth thing that
+  needs the same equipment at the same time, and say so briefly when it constrains you.
+- Obey the dietary rules absolutely. Onion is the most common failure — check yourself.
+- GARLIC: only ever as whole cloves added during cooking and removed before serving. Never name
+  a suggestion in a way that implies garlic remains in the dish. "Spinach with garlic" is
+  WRONG. "Spinach wilted with a whole garlic clove, removed" is correct, and better still is a
+  suggestion that simply doesn't need garlic.
+- If the user has made a request in their own words, it outranks your own read of the plate.
+  "Something lighter" means lighter, even if you think it needs a carb.
 - Be specific and confident. "Cucumber and dill salad with lemon" is useful. "A fresh salad"
   is not.
-- Suggest 3 additions. Each genuinely different from the others — not three salads.
-- Never suggest something already on the plate, or a near-duplicate of it.
+- Suggest 3 additions, each genuinely different from the others — not three salads.
 
 ## OUTPUT
 Return ONLY a JSON array. No prose before or after.
 
 [
   {
-    "display_name": "cucumber and dill salad with lemon",
-    "role": "veg",
-    "equipment": "none",
-    "active_min": 8,
-    "passive_min": 0,
-    "oven_temp_c": null,
-    "serve_temp": "cold",
-    "texture_tags": ["crunchy", "fresh"],
-    "flavour_tags": ["acidic", "herbal"],
-    "method_summary": "One sentence on how it's made.",
+    "text": "cucumber and dill salad with lemon",
     "why": "One short sentence on what it adds to THIS plate specifically."
   }
 ]
-```
 
-The `why` field must reference the actual plate, not generic virtues. "Cuts through two rich
-oven elements" is right. "Fresh and healthy" is not.
+"text" is what will appear in the user's plate box — write it the way they would.
+"why" must reference the actual plate. "Cuts through two rich oven elements" is right.
+"Fresh and healthy" is not.
+```
 
 ### User message template
 
 ```
 Current plate:
-{for each element: display_name | role | equipment | oven_temp_c | serve_temp | flavour_tags | active_min}
+- {element text}
+- {element text}
 
-Oven state: {free | in use at N°C}
-Hob elements in use: {n} of {hob_capacity}
-Active minutes used: {n} of {cap} ({energy_level})
+Effort level: {low | normal | cook}
 Current month: {month} (Denmark)
 
-{user request, if any — otherwise: "No specific request. Suggest what would complete this plate."}
+{user request, or: "No specific request. Suggest what would complete this plate."}
 
-Recent meals (avoid repeating):
-{last 10 logged meals, element names only}
+Recently cooked (avoid repeating):
+{element strings from the last 10 logged meals}
 ```
+
+### Server-side backstop
+
+Before returning suggestions, reject any whose `text` matches `/\bonions?\b/i`, or matches
+`/\bgarlic\b/i` without also matching `/removed?\b/i`. Rejections are logged
+(`console.log` in the worker, visible via `wrangler tail`) so it's possible to see how often the
+model needs catching. Implemented in `worker/src/jobD.js`.
 
 ---
 
@@ -334,8 +347,10 @@ Recent meals (avoid repeating):
   Job A's rules — not in the composer.
 - **Reject aggressively when seeding.** A library of 60 components you genuinely like beats 150
   you're ambivalent about. The composer can only ever be as good as what it draws from.
-- **Watch for onion.** It is the single most likely rule violation, because onion is the default
-  aromatic in most of the world's cooking and models reach for it reflexively. Consider a
-  server-side string check on Job A and Job C output as a backstop.
+- **Watch for onion and garlic.** Onion is the single most likely rule violation, because it's
+  the default aromatic in most of the world's cooking and models reach for it reflexively.
+  Garlic is the second most likely — live testing caught a garlic-left-in suggestion Job D's
+  own rules didn't prevent, which is why the server-side backstop exists. Don't rely on prompt
+  wording alone for either.
 - **Job C should run on the full model, not a cheap one.** Quantities and timing are where
   quality matters most and where errors are most visible.

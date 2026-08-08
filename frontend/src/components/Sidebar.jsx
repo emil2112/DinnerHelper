@@ -11,7 +11,7 @@ function relativeTime(dateStr) {
   return new Date(dateStr).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
 
-export default function Sidebar({ chats, activeChatId, onSelectChat, onNewChat, isOpen, onClose }) {
+export default function Sidebar({ chats, activeChatId, onSelectChat, onNewChat, onOpenTonight, isOpen, onClose }) {
   function handleSelectChat(id) {
     onSelectChat(id);
     onClose();
@@ -41,6 +41,10 @@ export default function Sidebar({ chats, activeChatId, onSelectChat, onNewChat, 
             <div className="brand-tagline">By us, for us ♡</div>
           </div>
         </div>
+
+        <button className="back-to-tonight-btn" onClick={onOpenTonight}>
+          ← Tonight
+        </button>
 
         <button className="new-chat-btn" onClick={handleNewChat}>
           + New chat

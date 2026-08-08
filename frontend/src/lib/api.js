@@ -12,3 +12,39 @@ export async function apiFetch(path, options = {}) {
   });
   return res;
 }
+
+export async function fetchProfile() {
+  return apiFetch('/profile');
+}
+
+export async function searchComponents(query) {
+  return apiFetch(`/components/search?q=${encodeURIComponent(query)}`);
+}
+
+export async function createManualComponent(fields) {
+  return apiFetch('/components/manual', {
+    method: 'POST',
+    body: JSON.stringify(fields),
+  });
+}
+
+export async function saveSuggestedComponent(fields) {
+  return apiFetch('/components/save-suggestion', {
+    method: 'POST',
+    body: JSON.stringify(fields),
+  });
+}
+
+export async function requestSuggestions({ energy, componentIds, prompt, history }) {
+  return apiFetch('/suggest', {
+    method: 'POST',
+    body: JSON.stringify({ energy, component_ids: componentIds, prompt, history }),
+  });
+}
+
+export async function fetchMethod({ componentIds, servings, energy }) {
+  return apiFetch('/method', {
+    method: 'POST',
+    body: JSON.stringify({ component_ids: componentIds, servings, energy }),
+  });
+}

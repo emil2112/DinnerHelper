@@ -3,6 +3,7 @@ import PassphraseGate from './components/PassphraseGate';
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
 import PantrySection from './components/PantrySection';
+import TonightScreen from './components/TonightScreen';
 import { apiFetch } from './lib/api';
 
 const DEV_MODE = import.meta.env.VITE_SKIP_AUTH === 'true';
@@ -12,6 +13,7 @@ if (DEV_MODE && !localStorage.getItem('dinnerhelper-auth')) {
 
 export default function App() {
   const [authed, setAuthed] = useState(DEV_MODE || !!localStorage.getItem('dinnerhelper-auth'));
+  const [view, setView] = useState('tonight');
   const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -106,6 +108,10 @@ export default function App() {
     return <PassphraseGate onAuth={() => setAuthed(true)} />;
   }
 
+  if (view === 'tonight') {
+    return <TonightScreen onOpenChat={() => setView('chat')} />;
+  }
+
   return (
     <div className="app-layout">
       <Sidebar
@@ -113,6 +119,7 @@ export default function App() {
         activeChatId={activeChatId}
         onSelectChat={selectChat}
         onNewChat={newChat}
+        onOpenTonight={() => setView('tonight')}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
       />
@@ -126,6 +133,9 @@ export default function App() {
             ☰
           </button>
           <span className="main-header-title">Dinner Ideas</span>
+          <button className="tonight-back-btn" onClick={() => setView('tonight')}>
+            Tonight
+          </button>
         </header>
         <ChatInterface
           messages={messages}

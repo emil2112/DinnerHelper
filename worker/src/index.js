@@ -147,7 +147,12 @@ export default {
         });
 
         return json(
-          { suggestions: jobD.suggestions, assistant_reply: jobD.replyText, user_message: jobD.userMessage },
+          {
+            suggestions: jobD.suggestions,
+            message: jobD.message,
+            assistant_reply: jobD.replyText,
+            user_message: jobD.userMessage,
+          },
           200,
           corsHeaders
         );

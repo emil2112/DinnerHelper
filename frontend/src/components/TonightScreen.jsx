@@ -22,6 +22,7 @@ export default function TonightScreen({ onOpenChat }) {
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [suggestError, setSuggestError] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
+  const [suggestMessage, setSuggestMessage] = useState(null);
   const [history, setHistory] = useState([]);
 
   useEffect(() => {
@@ -60,6 +61,7 @@ export default function TonightScreen({ onOpenChat }) {
       }
       const data = await res.json();
       setSuggestions(data.suggestions);
+      setSuggestMessage(data.message || null);
       if (data.assistant_reply && data.user_message) {
         setHistory((prev) => [
           ...prev,
@@ -138,6 +140,7 @@ export default function TonightScreen({ onOpenChat }) {
           loading={suggestLoading}
           error={suggestError}
           suggestions={suggestions}
+          message={suggestMessage}
           onAdd={addElement}
         />
       )}

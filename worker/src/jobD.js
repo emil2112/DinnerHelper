@@ -72,13 +72,23 @@ Recently cooked (avoid repeating):
 ${recentMealElementNames.length ? recentMealElementNames.join(', ') : 'None logged yet.'}`;
 }
 
+// Returns null on failure rather than throwing — a model response that doesn't parse as JSON
+// (e.g. it explained itself instead of, or in addition to, returning the array) is not the same
+// failure class as the API call itself failing. The caller surfaces null as the raw reply text
+// instead of a 500, so a refusal or explanation is still readable instead of being discarded.
 function parseJsonArray(text) {
   try {
     return JSON.parse(text);
   } catch {
     const match = text.match(/\[[\s\S]*\]/);
-    if (match) return JSON.parse(match[0]);
-    throw new Error('Job D returned non-JSON output');
+    if (match) {
+      try {
+        return JSON.parse(match[0]);
+      } catch {
+        return null;
+      }
+    }
+    return null;
   }
 }
 
@@ -112,6 +122,14 @@ export async function suggestAdditions(apiKey, params) {
   const replyText = data.content[0].text;
   const parsed = parseJsonArray(replyText);
 
+  if (parsed === null) {
+    // The call succeeded but the model didn't return the expected array — most often because
+    // it explained a refusal instead of (or as well as) answering in JSON. Surface the raw text
+    // as a message rather than failing the request; the user should get to read it.
+    console.log(`Job D response did not parse as JSON, surfacing raw text: ${replyText.slice(0, 200)}`);
+    return { suggestions: [], message: replyText, userMessage, replyText };
+  }
+
   const suggestions = [];
   for (const s of parsed) {
     if (violatesDietaryRules(s.text)) {
@@ -121,5 +139,5 @@ export async function suggestAdditions(apiKey, params) {
     suggestions.push(s);
   }
 
-  return { suggestions, userMessage, replyText };
+  return { suggestions, message: null, userMessage, replyText };
 }

@@ -1,6 +1,19 @@
-# DinnerHelper
+# Dinner Helper
 
-A dinner suggestion app powered by Claude AI. Suggests recipe ideas based on your pantry staples and conversation history.
+A dinner-inspiration chat for a household of confident cooks. You type the elements of tonight's
+meal into boxes — a protein, a carb, a vegetable, whatever you've already decided — and ask the
+model what else the plate needs. The plate stays pinned above the conversation and is re-sent
+with every message, so follow-ups ("something lighter", "make it vegetarian") stay grounded in
+what's actually on the table, not whatever was said three turns ago.
+
+No recipe database, no suggestion engine, no structured metadata on what you type — elements are
+free text, always. Two supporting pieces: a small library of elements you've chosen to save
+(each with a one-tap AI-generated description), and pantry staples that get folded into every
+prompt so the model knows what's always on hand without being told.
+
+See `docs/dinner-helper-spec.md` for the full design rationale, including what this replaced and
+why — an earlier version tried to model roles, techniques and feasibility in code, and the model
+turned out to do all of it better from plain text.
 
 **Live site:** https://emil2112.github.io/DinnerHelper/
 
@@ -9,9 +22,10 @@ A dinner suggestion app powered by Claude AI. Suggests recipe ideas based on you
 ## Project structure
 
 ```
-frontend/   React app (Vite)
-worker/     Cloudflare Worker — API, auth, D1 database, Anthropic calls
-migrations/ Cloudflare D1 SQL schema
+frontend/   React app (Vite) — main screen, conversation, library, pantry staples
+worker/     Cloudflare Worker — auth, streaming chat, D1 access, Anthropic calls
+migrations/ Cloudflare D1 SQL schema (elements, sessions, messages, settings)
+docs/       Design spec — the source of truth for what this app is and why
 .github/    GitHub Actions deploy workflow
 ```
 
@@ -19,72 +33,49 @@ migrations/ Cloudflare D1 SQL schema
 
 ## Local development
 
-### Option 1 — UI only (no worker needed)
-
-Good for working on layout, styling, or frontend logic. API calls will fail gracefully but the app is fully navigable.
-
-```bash
-git checkout dev
-cd frontend
-npm install
-npm run dev
-```
-
-Open http://localhost:5173. The passphrase gate is automatically skipped on the `dev` branch.
-
-### Option 2 — Full stack (frontend + worker)
-
-Needed for testing chat, pantry, or anything that hits the API.
-
-**Step 1 — Set up worker secrets**
+**Step 1 — set up worker secrets**
 
 ```bash
 cp worker/.dev.vars.example worker/.dev.vars
 ```
 
-Edit `worker/.dev.vars` and fill in your real `ANTHROPIC_API_KEY`. Leave `SKIP_AUTH=true` and `SHARED_PASSPHRASE=dev` as-is for local use.
+Edit `worker/.dev.vars` and fill in a real `ANTHROPIC_API_KEY`. Leave `SKIP_AUTH=true` and
+`SHARED_PASSPHRASE=dev` as-is for local use. Chat and the save-element description helper need a
+real key to produce anything; sessions, elements and settings CRUD all work without one.
 
-**Step 2 — Run both servers** (two terminals)
+**Step 2 — run both servers** (two terminals)
 
 ```bash
 # Terminal 1
 cd worker
 npm install
-npm run dev        # starts local worker at http://localhost:8787
+npm run dev        # local worker at http://localhost:8787
 
 # Terminal 2
 cd frontend
 npm install
-npm run dev        # starts frontend at http://localhost:5173
+npm run dev        # frontend at http://localhost:5173
 ```
 
-The frontend auto-connects to `localhost:8787` when no `VITE_WORKER_URL` is set.
-
----
-
-## Branch strategy
-
-| Branch | Passphrase gate | Deploys |
-|--------|----------------|---------|
-| `dev`  | Disabled (local dev) | No |
-| `main` | Enabled | Yes — GitHub Pages |
-
-Work on the `dev` branch. Merge to `main` when ready to ship. The gate is controlled by `frontend/.env.development` which Vite only loads during `npm run dev`, never during production builds.
+The frontend auto-connects to `localhost:8787` when no `VITE_WORKER_URL` is set, and skips the
+passphrase gate locally via `frontend/.env.development` (Vite only loads this file for `npm run
+dev`, never for a production build — the gate is always on in the deployed app).
 
 ---
 
 ## Deploying
 
-**Frontend** — push to `main`. GitHub Actions builds and deploys to GitHub Pages automatically. The `VITE_WORKER_URL` secret is injected at build time from GitHub Actions secrets.
+**Frontend** — push to `main`. GitHub Actions builds and deploys to GitHub Pages automatically.
+`VITE_WORKER_URL` is injected at build time from a GitHub Actions secret.
 
-**Worker** — deploy manually from the `worker/` directory:
+**Worker** — deploy manually from `worker/`:
 
 ```bash
 cd worker
 npm run deploy     # runs: wrangler deploy
 ```
 
-Worker secrets (set once via Wrangler, stored in Cloudflare):
+Worker secrets (set once via Wrangler, stored in Cloudflare, never in the repo):
 
 ```bash
 wrangler secret put SHARED_PASSPHRASE

@@ -6,7 +6,7 @@ const MODEL = 'claude-sonnet-5';
 // response — the prompt has proven reliable live; this exists only to detect drift.
 const ONION_RE = /\bonions?\b/i;
 const GARLIC_RE = /\bgarlic\b/i;
-const REMOVED_RE = /removed?\b/i;
+const REMOVED_RE = /\b(removed?|pulled out|taken out|discarded)\b/i;
 
 function checkBackstop(text) {
   if (ONION_RE.test(text)) {

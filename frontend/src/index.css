@@ -404,6 +404,11 @@ body {
   opacity: 0.55;
 }
 
+.assistant-bubble.error {
+  border-color: rgba(224, 160, 160, 0.4);
+  color: #e0a0a0;
+}
+
 .assistant-bubble :is(h1, h2, h3, h4) {
   font-size: 14px;
   font-weight: 600;
@@ -1033,6 +1038,30 @@ body {
   color: var(--text-secondary);
 }
 
+.element-box-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.element-save-btn {
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 0 12px;
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.element-save-btn:hover {
+  background: rgba(46, 107, 46, 0.15);
+}
+
 /* ── ADD ELEMENT ── */
 
 .add-element-card {
@@ -1566,5 +1595,304 @@ body {
 
   .method-title {
     font-size: 26px;
+  }
+}
+
+/* ── SAVE ELEMENT DIALOG ── */
+
+.save-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 50;
+}
+
+.save-dialog {
+  width: 100%;
+  max-width: 480px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: 20px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.save-dialog-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.save-dialog-status {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.save-dialog-status.error {
+  color: #e0a0a0;
+}
+
+.save-dialog-textarea {
+  min-height: 72px;
+  padding: 10px 12px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.save-dialog-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.save-dialog-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.save-dialog-confirm,
+.save-dialog-cancel {
+  flex: 1;
+  min-height: 44px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.save-dialog-confirm {
+  background: var(--accent);
+  border: none;
+  color: #c8e8c8;
+}
+
+.save-dialog-confirm:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.save-dialog-confirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.save-dialog-cancel {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+/* ── LIBRARY PAGE ── */
+
+.library-page {
+  padding: 20px 16px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+}
+
+.library-back-btn {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  font-family: var(--font);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.library-back-btn:hover {
+  background: var(--card-bg);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.library-title {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.library-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.library-add-form input {
+  min-height: 44px;
+  padding: 0 12px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+}
+
+.library-add-form input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.library-add-form button {
+  min-height: 44px;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: #c8e8c8;
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.library-add-form button:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.library-add-form button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.library-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.library-empty {
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+  padding: 24px 0;
+}
+
+.library-row {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.library-row-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.library-row-description {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 3px;
+}
+
+.library-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.library-row-actions button {
+  min-height: 36px;
+  padding: 0 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.library-row-actions button:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.library-add-to-plate-btn {
+  border-color: var(--accent) !important;
+  color: var(--text) !important;
+}
+
+.library-delete-btn:hover {
+  color: #e0a0a0 !important;
+}
+
+.library-edit-name {
+  min-height: 40px;
+  padding: 0 10px;
+  background: var(--input-bg);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.library-edit-description {
+  padding: 8px 10px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  resize: vertical;
+}
+
+.library-edit-description:focus,
+.library-edit-name:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+@media (min-width: 768px) {
+  .save-dialog-overlay {
+    align-items: center;
+  }
+
+  .save-dialog {
+    border-radius: var(--radius-lg);
+    padding: 24px;
+  }
+
+  .library-page {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 40px 24px 48px;
+  }
+
+  .library-title {
+    font-size: 26px;
+  }
+
+  .library-add-form {
+    flex-direction: row;
+  }
+
+  .library-add-form input {
+    flex: 1;
+  }
+
+  .library-add-form button {
+    flex-shrink: 0;
+    padding: 0 20px;
   }
 }

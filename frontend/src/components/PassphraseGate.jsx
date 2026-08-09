@@ -13,7 +13,7 @@ export default function PassphraseGate({ onAuth }) {
     setError('');
     localStorage.setItem('dinnerhelper-auth', value);
     try {
-      const res = await apiFetch('/chats');
+      const res = await apiFetch('/sessions');
       if (res.ok) {
         onAuth();
       } else {

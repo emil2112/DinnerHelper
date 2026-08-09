@@ -1,13 +1,4 @@
 import { validateAuth } from './auth.js';
-import { callAnthropic } from './anthropic.js';
-import { suggestAdditions } from './jobD.js';
-import { generateMethod } from './jobC.js';
-import {
-  listChats, createChat, getChat, addMessage, deleteChat, renameChat,
-  listPantry, addPantryItem, deletePantryItem,
-  listRecipes, saveRecipe, deleteRecipe,
-  searchElements, getProfile, plateSignature, getCachedMethod, cacheMethod,
-} from './db.js';
 
 const ALLOWED_ORIGINS = [
   'https://emil2112.github.io',
@@ -31,6 +22,7 @@ function json(data, status, corsHeaders) {
   });
 }
 
+// Kept for Stage 2 — routes like /sessions/:id will need it again.
 function matchPath(pattern, pathname) {
   const pp = pattern.split('/');
   const path = pathname.split('/');
@@ -58,175 +50,8 @@ export default {
       return json({ error: 'Unauthorized' }, 401, corsHeaders);
     }
 
-    const url = new URL(request.url);
-    const pathname = url.pathname;
-    const method = request.method;
-    let params;
-
-    try {
-      // POST /chat
-      if (method === 'POST' && pathname === '/chat') {
-        const { chat_id, message } = await request.json();
-
-        let chatId = chat_id ?? null;
-        let history = [];
-
-        if (chatId) {
-          const { messages } = await getChat(env.DB, chatId);
-          history = messages.map(m => ({ role: m.role, content: m.content }));
-        } else {
-          const title = message.slice(0, 60) + (message.length > 60 ? '…' : '');
-          chatId = await createChat(env.DB, title);
-        }
-
-        history.push({ role: 'user', content: message });
-
-        const pantryItems = await listPantry(env.DB);
-        const reply = await callAnthropic(env.ANTHROPIC_API_KEY, history, pantryItems);
-
-        await addMessage(env.DB, chatId, 'user', message);
-        await addMessage(env.DB, chatId, 'assistant', reply);
-
-        return json({ chat_id: chatId, reply }, 200, corsHeaders);
-      }
-
-      // GET /chats
-      if (method === 'GET' && pathname === '/chats') {
-        return json(await listChats(env.DB), 200, corsHeaders);
-      }
-
-      // GET /chats/:id
-      if (method === 'GET' && (params = matchPath('/chats/:id', pathname))) {
-        return json(await getChat(env.DB, Number(params.id)), 200, corsHeaders);
-      }
-
-      // DELETE /chats/:id
-      if (method === 'DELETE' && (params = matchPath('/chats/:id', pathname))) {
-        await deleteChat(env.DB, Number(params.id));
-        return json({ ok: true }, 200, corsHeaders);
-      }
-
-      // PATCH /chats/:id
-      if (method === 'PATCH' && (params = matchPath('/chats/:id', pathname))) {
-        const { title } = await request.json();
-        await renameChat(env.DB, Number(params.id), title);
-        return json({ ok: true }, 200, corsHeaders);
-      }
-
-      // GET /profile
-      if (method === 'GET' && pathname === '/profile') {
-        return json(await getProfile(env.DB), 200, corsHeaders);
-      }
-
-      // GET /elements/search?q=... — autocomplete over element_history + components.display_name
-      if (method === 'GET' && pathname === '/elements/search') {
-        const q = url.searchParams.get('q') || '';
-        if (q.trim().length < 2) return json([], 200, corsHeaders);
-        return json(await searchElements(env.DB, q.trim()), 200, corsHeaders);
-      }
-
-      // POST /suggest — Job D only. No library ranking, no feasibility (docs/simplification.md).
-      if (method === 'POST' && pathname === '/suggest') {
-        const body = await request.json().catch(() => ({}));
-        const energy = ['low', 'normal', 'cook'].includes(body.energy) ? body.energy : 'normal';
-        const elements = Array.isArray(body.elements) ? body.elements : [];
-        const userRequest = typeof body.prompt === 'string' && body.prompt.trim() ? body.prompt.trim() : null;
-        const history = Array.isArray(body.history) ? body.history : [];
-
-        const profile = await getProfile(env.DB);
-        const month = new Date().getUTCMonth() + 1;
-
-        const jobD = await suggestAdditions(env.ANTHROPIC_API_KEY, {
-          elements,
-          profile,
-          energy,
-          month,
-          userRequest,
-          recentMealElementNames: [], // meals table is unused until Phase 4
-          history,
-        });
-
-        return json(
-          {
-            suggestions: jobD.suggestions,
-            message: jobD.message,
-            assistant_reply: jobD.replyText,
-            user_message: jobD.userMessage,
-          },
-          200,
-          corsHeaders
-        );
-      }
-
-      // POST /method — "Cook this". Cached by (plate signature, servings); cache hit = no LLM call.
-      if (method === 'POST' && pathname === '/method') {
-        const body = await request.json().catch(() => ({}));
-        const elements = Array.isArray(body.elements) ? body.elements : [];
-        if (!elements.length) {
-          return json({ error: 'elements is required' }, 400, corsHeaders);
-        }
-        const energy = ['low', 'normal', 'cook'].includes(body.energy) ? body.energy : 'normal';
-
-        const profile = await getProfile(env.DB);
-        const servings = Number.isInteger(body.servings) ? body.servings : profile.default_servings;
-
-        const signature = await plateSignature(elements);
-        const cached = await getCachedMethod(env.DB, signature, servings);
-        if (cached) {
-          return json({ ...cached, cached: true }, 200, corsHeaders);
-        }
-
-        const payload = await generateMethod(env.ANTHROPIC_API_KEY, {
-          elements,
-          profile,
-          servings,
-          energy,
-        });
-
-        await cacheMethod(env.DB, signature, servings, payload);
-
-        return json({ ...payload, cached: false }, 200, corsHeaders);
-      }
-
-      // GET /pantry
-      if (method === 'GET' && pathname === '/pantry') {
-        return json(await listPantry(env.DB), 200, corsHeaders);
-      }
-
-      // POST /pantry
-      if (method === 'POST' && pathname === '/pantry') {
-        const { category, name, notes } = await request.json();
-        const id = await addPantryItem(env.DB, category, name, notes);
-        return json({ id, category, name, notes: notes || null }, 200, corsHeaders);
-      }
-
-      // DELETE /pantry/:id
-      if (method === 'DELETE' && (params = matchPath('/pantry/:id', pathname))) {
-        await deletePantryItem(env.DB, Number(params.id));
-        return json({ ok: true }, 200, corsHeaders);
-      }
-
-      // GET /recipes
-      if (method === 'GET' && pathname === '/recipes') {
-        return json(await listRecipes(env.DB), 200, corsHeaders);
-      }
-
-      // POST /recipes
-      if (method === 'POST' && pathname === '/recipes') {
-        const { title, content, source_chat_id } = await request.json();
-        const id = await saveRecipe(env.DB, title, content, source_chat_id);
-        return json({ id, title }, 200, corsHeaders);
-      }
-
-      // DELETE /recipes/:id
-      if (method === 'DELETE' && (params = matchPath('/recipes/:id', pathname))) {
-        await deleteRecipe(env.DB, Number(params.id));
-        return json({ ok: true }, 200, corsHeaders);
-      }
-
-      return json({ error: 'Not found' }, 404, corsHeaders);
-    } catch (e) {
-      return json({ error: e.message }, 500, corsHeaders);
-    }
+    // Stage 0 teardown: every route removed except auth. Stage 2 rebuilds sessions,
+    // messages (streaming chat), elements and settings per docs/dinner-helper-spec.md §4/§6.
+    return json({ error: 'Not found' }, 404, corsHeaders);
   },
 };
